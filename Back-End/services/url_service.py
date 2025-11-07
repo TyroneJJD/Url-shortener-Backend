@@ -17,11 +17,11 @@ class URLService:
         # Create URL
         async with db.pool.acquire() as conn:
             row = await conn.fetchrow('''
-                INSERT INTO urls (short_code, original_url, user_id)
-                VALUES ($1, $2, $3)
+                INSERT INTO urls (short_code, original_url, user_id, is_private)
+                VALUES ($1, $2, $3, $4)
                 RETURNING id, short_code, original_url, user_id, clicks, is_active, 
-                          created_at, updated_at
-            ''', short_code, url_data.original_url, user_id)
+                          is_private, created_at, updated_at 
+            ''', short_code, url_data.original_url, user_id, url_data.is_private)
             
             return URL(**dict(row))
     
@@ -93,6 +93,11 @@ class URLService:
                 values.append(url_data.is_active)
                 param_count += 1
             
+            if url_data.is_private is not None:
+                updates.append(f'is_private = ${param_count}')
+                values.append(url_data.is_private)
+                param_count += 1
+            
             if not updates:
                 # No updates provided, just return current URL
                 return await URLService.get_url_by_id(url_id, user_id)
@@ -105,7 +110,7 @@ class URLService:
                 SET {', '.join(updates)}
                 WHERE id = ${param_count} AND user_id = ${param_count + 1}
                 RETURNING id, short_code, original_url, user_id, clicks, is_active,
-                          created_at, updated_at
+                          is_private, created_at, updated_at
             '''
             
             row = await conn.fetchrow(query, *values)

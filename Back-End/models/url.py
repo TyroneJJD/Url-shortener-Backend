@@ -17,13 +17,14 @@ class URLBase(BaseModel):
 
 class URLCreate(URLBase):
     """URL creation model"""
-    pass
+    is_private: bool = False
 
 
 class URLUpdate(BaseModel):
     """URL update model"""
     original_url: Optional[str] = None
     is_active: Optional[bool] = None
+    is_private: Optional[bool] = None
     
     @field_validator('original_url')
     @classmethod
@@ -39,6 +40,7 @@ class URLResponse(URLBase):
     short_code: str
     clicks: int
     is_active: bool
+    is_private: bool
     created_at: datetime
     
     class Config:
@@ -52,5 +54,6 @@ class URL(URLBase):
     user_id: int
     clicks: int
     is_active: bool
+    is_private: bool
     created_at: datetime
     updated_at: datetime

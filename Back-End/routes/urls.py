@@ -2,16 +2,17 @@ from fastapi import APIRouter, HTTPException, status, Depends, Response
 from typing import List
 from models import URLCreate, URLUpdate, URLResponse, User
 from services import url_service
-from middleware import get_current_user_from_cookie
+from middleware import get_current_user_from_cookie, get_optional_user_from_cookie
 
 router = APIRouter(tags=["URLs"])
 
 
 @router.get("/{short_code}")
-async def resolve_url(short_code: str):
+async def resolve_url(short_code: str, current_user: User = Depends(get_optional_user_from_cookie)):
     """
-    Resolve short URL and redirect - Public
+    Resolve short URL and redirect - Public (unless URL is private)
     Returns 301 redirect to original URL
+    If URL is private, requires authentication
     """
     url = await url_service.get_url_by_short_code(short_code)
     
@@ -19,6 +20,13 @@ async def resolve_url(short_code: str):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="URL not found"
+        )
+    
+    # Check if URL is private and user is not authenticated
+    if url.is_private and not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to access this private URL"
         )
     
     # Increment click counter
@@ -53,6 +61,7 @@ async def create_url(
         original_url=url.original_url,
         clicks=url.clicks,
         is_active=url.is_active,
+        is_private=url.is_private,
         created_at=url.created_at
     )
 
@@ -71,6 +80,7 @@ async def get_my_urls(current_user: User = Depends(get_current_user_from_cookie)
             original_url=url.original_url,
             clicks=url.clicks,
             is_active=url.is_active,
+            is_private=url.is_private,
             created_at=url.created_at
         )
         for url in urls
@@ -101,6 +111,7 @@ async def edit_url(
         original_url=url.original_url,
         clicks=url.clicks,
         is_active=url.is_active,
+        is_private=url.is_private,
         created_at=url.created_at
     )
 

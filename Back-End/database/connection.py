@@ -48,9 +48,9 @@ class Database:
                     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
                     clicks INTEGER DEFAULT 0,
                     is_active BOOLEAN DEFAULT TRUE,
+                    is_private BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    is_private BOOLEAN DEFAULT FALSE
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
