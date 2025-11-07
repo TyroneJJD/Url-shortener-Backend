@@ -1,5 +1,6 @@
 import asyncpg
 from typing import Optional
+from pathlib import Path
 from config import settings
 
 
@@ -11,12 +12,18 @@ class Database:
     
     async def connect(self):
         """Create database connection pool"""
-        self.pool = await asyncpg.create_pool(
-            settings.DATABASE_URL,
-            min_size=2,
-            max_size=10
-        )
-        await self.init_db()
+        try:
+            self.pool = await asyncpg.create_pool(
+                settings.DATABASE_URL,
+                min_size=2,
+                max_size=10,
+                timeout=10
+            )
+            await self.init_db()
+            print(f"✅ Database connected")
+        except Exception as e:
+            print(f"❌ Failed to connect to database: {e}")
+            raise
     
     async def disconnect(self):
         """Close database connection pool"""
@@ -24,41 +31,13 @@ class Database:
             await self.pool.close()
     
     async def init_db(self):
-        """Initialize database tables"""
+        """Initialize database tables from schema file"""
+        schema_path = Path(__file__).parent / "schema.sql"
+        
         async with self.pool.acquire() as conn:
-            # Users table
-            await conn.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username VARCHAR(50) UNIQUE NOT NULL,
-                    email VARCHAR(100) UNIQUE NOT NULL,
-                    hashed_password VARCHAR(255) NOT NULL,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # URLs table
-            await conn.execute('''
-                CREATE TABLE IF NOT EXISTS urls (
-                    id SERIAL PRIMARY KEY,
-                    short_code VARCHAR(20) UNIQUE NOT NULL,
-                    original_url TEXT NOT NULL,
-                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-                    clicks INTEGER DEFAULT 0,
-                    is_active BOOLEAN DEFAULT TRUE,
-                    is_private BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Index for fast lookups
-            await conn.execute('''
-                CREATE INDEX IF NOT EXISTS idx_short_code 
-                ON urls(short_code) WHERE is_active = TRUE
-            ''')
+            with open(schema_path, 'r', encoding='utf-8') as f:
+                schema_sql = f.read()
+                await conn.execute(schema_sql)
     
     async def get_connection(self):
         """Get a database connection from the pool"""
