@@ -26,9 +26,9 @@ class AuthService:
             hashed_password = get_password_hash(user_data.password)
             
             row = await conn.fetchrow('''
-                INSERT INTO users (username, email, hashed_password)
-                VALUES ($1, $2, $3)
-                RETURNING id, username, email, hashed_password, is_active, created_at, updated_at
+                INSERT INTO users (username, email, hashed_password, user_type)
+                VALUES ($1, $2, $3, 'registered')
+                RETURNING id, username, email, hashed_password, user_type, guest_uuid, is_active, created_at, updated_at
             ''', user_data.username, user_data.email, hashed_password)
             
             return User(**dict(row))
@@ -67,9 +67,17 @@ class AuthService:
             return User(**dict(row))
     
     @staticmethod
-    def create_token(user: User) -> str:
-        """Create access token for user"""
-        access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    def create_token(user: User, expire_minutes: int = None) -> str:
+        """
+        Create access token for user
+        Args:
+            user: User object
+            expire_minutes: Custom expiration in minutes (defaults to settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        """
+        if expire_minutes is None:
+            expire_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+            
+        access_token_expires = timedelta(minutes=expire_minutes)
         access_token = create_access_token(
             data={"sub": str(user.id), "username": user.username},
             expires_delta=access_token_expires

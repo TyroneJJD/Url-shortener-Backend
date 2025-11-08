@@ -42,6 +42,7 @@ class URLResponse(URLBase):
     is_active: bool
     is_private: bool
     created_at: datetime
+    expires_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -57,3 +58,4 @@ class URL(URLBase):
     is_private: bool
     created_at: datetime
     updated_at: datetime
+    expires_at: Optional[datetime] = None

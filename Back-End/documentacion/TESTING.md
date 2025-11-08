@@ -27,7 +27,33 @@ http://localhost:8000
 ```
 ✅ Establece cookie HTTP-only `access_token`
 
-### 3. Crear URL Pública
+### 3. Validar Sesión (Me)
+**GET** `/auth/me` 🔒
+
+**Respuesta:** `200 OK`
+```json
+{
+  "user": {
+    "id": 1,
+    "username": "testuser",
+    "email": "test@example.com",
+    "is_active": true,
+    "created_at": "2025-11-08T12:00:00"
+  }
+}
+```
+
+**Ejemplo:**
+```bash
+# Validar sesión activa
+curl -b cookies.txt http://localhost:8000/auth/me
+
+# Si no hay cookie o expiró → 401 Unauthorized
+```
+
+**Nota:** Este endpoint usa sliding session, por lo que automáticamente renueva el token en cada llamada.
+
+### 4. Crear URL Pública
 **POST** `/urls` 🔒
 ```json
 {
@@ -47,7 +73,7 @@ http://localhost:8000
 }
 ```
 
-### 4. Crear URL Privada
+### 5. Crear URL Privada
 **POST** `/urls` 🔒
 ```json
 {
@@ -56,17 +82,45 @@ http://localhost:8000
 }
 ```
 
-### 5. Resolver URL
+### 6. Resolver URL
 **GET** `/{short_code}`
 - **Pública:** Acceso sin autenticación
 - **Privada:** Requiere cookie 🔒
 
-Retorna: `301 Redirect` a URL original
+**Posibles respuestas:**
 
-### 6. Listar URLs
+✅ **301 Redirect** → URL original (si todo OK)
+
+🔄 **302 Redirect** → Frontend con parámetros de error:
+- `http://localhost:3000/{short_code}?error=not_found` (URL no existe)
+- `http://localhost:3000/{short_code}?error=unauthorized` (URL privada sin login)
+  - **Bonus:** Establece cookie `redirect_after_login` con el `short_code` (5 min) para redirección post-login
+- `http://localhost:3000/{short_code}?error=guest_forbidden` (URL privada, usuario guest intentando acceder)
+
+**Ejemplo:**
+```bash
+# URL pública válida
+curl -L http://localhost:8000/abc123
+# → 301 a https://google.com
+
+# URL no encontrada
+curl -L http://localhost:8000/noexiste
+# → 302 a http://localhost:3000/noexiste?error=not_found
+
+# URL privada sin autenticación
+curl -i http://localhost:8000/privado
+# → 302 a http://localhost:3000/privado?error=unauthorized
+# → Cookie: redirect_after_login=privado; HttpOnly; Max-Age=300
+
+# URL privada con usuario guest
+curl -i http://localhost:8000/privado -b guest_cookies.txt
+# → 302 a http://localhost:3000/privado?error=guest_forbidden
+```
+
+### 7. Listar URLs
 **GET** `/urls/me/all` 🔒
 
-### 7. Editar URL
+### 8. Editar URL
 **PUT** `/urls/{url_id}` 🔒
 ```json
 {
@@ -79,10 +133,7 @@ Retorna: `301 Redirect` a URL original
 ### 8. Eliminar URL
 **DELETE** `/urls/{url_id}` 🔒
 
-### 9. Refrescar Token
-**POST** `/auth/refresh` 🔒
-
-### 10. Logout
+### 9. Logout
 **POST** `/auth/logout`
 
 ---
@@ -101,26 +152,32 @@ curl -X POST http://localhost:8000/auth/login \
   -d '{"username":"test","password":"pass123"}' \
   -c cookies.txt
 
-# 3. Crear URL pública
+# 3. Validar sesión activa
+curl http://localhost:8000/auth/me -b cookies.txt
+
+# 4. Crear URL pública
 curl -X POST http://localhost:8000/urls \
   -H "Content-Type: application/json" \
   -d '{"original_url":"https://google.com"}' \
   -b cookies.txt
 
-# 4. Crear URL privada
+# 5. Crear URL privada
 curl -X POST http://localhost:8000/urls \
   -H "Content-Type: application/json" \
   -d '{"original_url":"https://internal.com","is_private":true}' \
   -b cookies.txt
 
-# 5. Resolver URL pública (sin cookie)
+# 6. Resolver URL pública (sin cookie)
 curl -L http://localhost:8000/aB3xR9K
 
-# 6. Resolver URL privada (con cookie)
+# 7. Resolver URL privada (con cookie)
 curl -L http://localhost:8000/pR7vXtE -b cookies.txt
 
-# 7. Ver mis URLs
+# 8. Ver mis URLs
 curl http://localhost:8000/urls/me/all -b cookies.txt
+
+# 9. Logout
+curl -X POST http://localhost:8000/auth/logout -b cookies.txt
 ```
 
 ---

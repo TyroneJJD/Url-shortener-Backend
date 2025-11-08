@@ -39,10 +39,6 @@ python -m venv venv
 # Instalar dependencias
 pip install -r requirements.txt
 
-# Configurar variables de entorno
-copy .env.example .env
-# Editar .env con tus credenciales
-
 # Ejecutar aplicación
 python main.py
 ```
@@ -101,7 +97,6 @@ created_at, updated_at, expires_at
 ✅ Códigos cortos autogenerados (7 chars)  
 ✅ ~3.5 trillones de combinaciones posibles  
 ✅ Contador de clicks  
-✅ Soft delete  
 ✅ Sin migraciones - Esquema SQL simple  
 
 ## 🧪 Testing
@@ -118,7 +113,11 @@ SECRET_KEY=your-secret-key-here
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 DEBUG=True
+FRONTEND_URL=http://localhost:3000
 ```
+
+**Variables importantes:**
+- `FRONTEND_URL`: URL del frontend para redirecciones en caso de error (404, 401)
 
 ## 📝 Notas
 

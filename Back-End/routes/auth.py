@@ -1,11 +1,11 @@
-from fastapi import APIRouter, HTTPException, status, Response, Depends, Request
-from models import UserLogin, UserCreate, UserResponse, User
+from fastapi import APIRouter, HTTPException, status, Response, Depends
+from models import UserLogin, UserCreate, UserResponse, User, GuestCreate, MigrateGuestUser
 from services import auth_service
-from middleware import get_current_user_from_cookie
+from services import guest_service
 from config import settings
+from middleware.auth import get_current_user_from_cookie
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
 
 @router.post("/login")
 async def login(login_data: UserLogin, response: Response):
@@ -40,8 +40,52 @@ async def login(login_data: UserLogin, response: Response):
             id=user.id,
             username=user.username,
             email=user.email,
+            user_type=user.user_type,
             is_active=user.is_active,
             created_at=user.created_at
+        )
+    }
+
+
+@router.post("/guest")
+async def create_guest_session(guest_data: GuestCreate, response: Response):
+    """
+    Create guest user session - Public
+    Sets HTTP-only cookie with guest access token (7 days)
+    """
+    user = await guest_service.create_guest_user(guest_data)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to create guest session"
+        )
+    
+    # Create User object from dict
+    user_obj = User(**user, hashed_password=None)
+    
+    # Create access token (7 days for guests)
+    access_token = auth_service.create_token(user_obj, expire_minutes=7 * 24 * 60)
+    
+    # Set HTTP-only cookie (7 days)
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=7 * 24 * 60 * 60  # 7 days
+    )
+    
+    return {
+        "message": "Guest session created",
+        "user": UserResponse(
+            id=user['id'],
+            username=user['username'],
+            email=user.get('email'),
+            user_type=user['user_type'],
+            is_active=user['is_active'],
+            created_at=user['created_at']
         )
     }
 
@@ -65,25 +109,46 @@ async def register(user_data: UserCreate):
             id=user.id,
             username=user.username,
             email=user.email,
+            user_type=user.user_type,
             is_active=user.is_active,
             created_at=user.created_at
         )
     }
 
 
-@router.post("/refresh")
-async def refresh_token(
+@router.post("/migrate")
+async def migrate_guest_to_registered(
+    migration_data: MigrateGuestUser,
     response: Response,
     current_user: User = Depends(get_current_user_from_cookie)
 ):
     """
-    Refresh access token - Requires Cookie
-    Generates a new token and updates the cookie
+    Migrate guest user to registered user - Requires Guest Cookie Auth
+    Converts guest account to full registered account
+    Removes expiration from all URLs
     """
-    # Create new access token
-    access_token = auth_service.create_token(current_user)
+    # Verify user is a guest
+    if current_user.user_type != 'guest':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only guest users can be migrated"
+        )
     
-    # Update HTTP-only cookie
+    user = await guest_service.migrate_guest_to_registered(current_user.id, migration_data)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email or username already registered"
+        )
+    
+    # Create User object from dict
+    user_obj = User(**user, hashed_password=None)
+    
+    # Create new access token (30 minutes for registered users)
+    access_token = auth_service.create_token(user_obj)
+    
+    # Update cookie with new token
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -94,11 +159,34 @@ async def refresh_token(
     )
     
     return {
-        "message": "Token refreshed successfully",
+        "message": "Account migrated successfully",
+        "user": UserResponse(
+            id=user['id'],
+            username=user['username'],
+            email=user['email'],
+            user_type=user['user_type'],
+            is_active=user['is_active'],
+            created_at=user['created_at']
+        )
+    }
+
+
+@router.get("/me")
+async def get_current_user(
+    response: Response,
+    current_user: User = Depends(get_current_user_from_cookie)
+):
+    """
+    Get current authenticated user - Requires Cookie Auth
+    Validates HTTP-only cookie and returns user data
+    Automatically refreshes the session (sliding session)
+    """
+    return {
         "user": UserResponse(
             id=current_user.id,
             username=current_user.username,
             email=current_user.email,
+            user_type=current_user.user_type,
             is_active=current_user.is_active,
             created_at=current_user.created_at
         )

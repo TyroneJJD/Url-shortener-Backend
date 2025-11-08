@@ -1,7 +1,9 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from database import db
 from routes import auth_router, urls_router
+from routes.admin import router as admin_router
 from config import settings
 
 
@@ -28,6 +30,15 @@ app = FastAPI(
 )
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -38,6 +49,7 @@ async def health_check():
 # Include routers
 app.include_router(auth_router)
 app.include_router(urls_router)
+app.include_router(admin_router)
 
 
 if __name__ == "__main__":

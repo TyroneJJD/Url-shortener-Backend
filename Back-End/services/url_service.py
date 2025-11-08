@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import db
 from models import URL, URLCreate, URLUpdate
 from utils import generate_short_code
@@ -9,19 +9,24 @@ class URLService:
     """URL shortening service"""
     
     @staticmethod
-    async def create_url(url_data: URLCreate, user_id: int) -> Optional[URL]:
+    async def create_url(url_data: URLCreate, user_id: int, user_type: str = 'registered') -> Optional[URL]:
         """Create a shortened URL"""
         # Generate short code automatically
         short_code = await generate_short_code()
         
+        # Calculate expiration for guest users (7 days)
+        expires_at = None
+        if user_type == 'guest':
+            expires_at = datetime.utcnow() + timedelta(days=7)
+        
         # Create URL
         async with db.pool.acquire() as conn:
             row = await conn.fetchrow('''
-                INSERT INTO urls (short_code, original_url, user_id, is_private)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO urls (short_code, original_url, user_id, is_private, expires_at)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING id, short_code, original_url, user_id, clicks, is_active, 
-                          is_private, created_at, updated_at 
-            ''', short_code, url_data.original_url, user_id, url_data.is_private)
+                          is_private, created_at, updated_at, expires_at
+            ''', short_code, url_data.original_url, user_id, url_data.is_private, expires_at)
             
             return URL(**dict(row))
     
@@ -122,14 +127,14 @@ class URLService:
     
     @staticmethod
     async def delete_url(url_id: int, user_id: int) -> bool:
-        """Delete a URL (soft delete)"""
+        """Delete a URL (hard delete)"""
         async with db.pool.acquire() as conn:
             result = await conn.execute(
-                'UPDATE urls SET is_active = FALSE, updated_at = NOW() WHERE id = $1 AND user_id = $2',
+                'DELETE FROM urls WHERE id = $1 AND user_id = $2',
                 url_id, user_id
             )
             
-            return result == 'UPDATE 1'
+            return result == 'DELETE 1'
 
 
 url_service = URLService()
