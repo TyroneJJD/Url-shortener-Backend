@@ -91,7 +91,7 @@ async def create_guest_session(guest_data: GuestCreate, response: Response):
 
 
 @router.post("/register")
-async def register(user_data: UserCreate):
+async def register(user_data: UserCreate, response: Response):
     """
     Register a new user - Public
     """
@@ -102,6 +102,19 @@ async def register(user_data: UserCreate):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username or email already registered"
         )
+    
+        # Create access token
+    access_token = auth_service.create_token(user)
+    
+    # Set HTTP-only cookie
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=not settings.DEBUG,  # True in production (HTTPS)
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
     
     return {
         "message": "User created successfully",
