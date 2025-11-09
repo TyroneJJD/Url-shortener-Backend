@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, status, Depends, Response, Query, 
 from fastapi.responses import StreamingResponse
 from models import URLCreate, URLUpdate, URLResponse, User, URLBulkCreate, URLAccessHistory
 from services import url_service, guest_service
+from services.auth_service import registered_user_service
+from services.base_user_service import BaseUserService
 from middleware import get_current_user_from_cookie, get_optional_user_from_cookie
 from config import settings
 import json
@@ -9,6 +11,13 @@ from io import BytesIO
 from datetime import datetime
 
 router = APIRouter(tags=["URLs"])
+
+
+def get_user_service(user_type: str) -> BaseUserService:
+    """
+    Helper function to get the appropriate user service based on user type
+    """
+    return guest_service if user_type == 'guest' else registered_user_service
 
 
 @router.get("/{short_code}")
@@ -75,7 +84,7 @@ async def create_url(
     """
     Create a shortened URL - Requires Cookie Auth
     Guest users: limited to 5 URLs, expire in 7 days, cannot create private URLs
-    Registered users: unlimited URLs, no expiration, can create private URLs
+    Registered users: limited to 100 URLs, no expiration, can create private URLs
     """
     # Guest users cannot create private URLs
     if current_user.user_type == 'guest' and url_data.is_private:
@@ -84,16 +93,23 @@ async def create_url(
             detail="Guest users cannot create private URLs. Please register to use this feature."
         )
     
-    # Check if user can create URL (guest limit)
-    can_create = await guest_service.can_create_url(current_user.id, current_user.user_type)
+    # Get appropriate user service and check if user can create URL
+    user_service = get_user_service(current_user.user_type)
+    can_create = await user_service.can_create_url(current_user.id, current_user.user_type)
     
     if not can_create:
+        limit = user_service.max_urls
+        detail_msg = f"{'Guest users' if current_user.user_type == 'guest' else 'Registered users'} can only create {limit} URLs."
+        if current_user.user_type == 'guest':
+            detail_msg += " Please register for more URLs."
+        
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Guest users can only create 5 URLs. Please register for unlimited URLs."
+            detail=detail_msg
         )
     
     url = await url_service.create_url(url_data, current_user.id, current_user.user_type)
+
     
     if not url:
         raise HTTPException(
@@ -350,23 +366,27 @@ async def create_urls_bulk(
                     detail="Guest users cannot create private URLs. Please register to use this feature."
                 )
     
-    # Check if guest user can create this many URLs
-    if current_user.user_type == 'guest':
-        can_create = await guest_service.can_create_url(current_user.id, current_user.user_type)
-        if not can_create:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Guest users can only create 5 URLs. Please register for unlimited URLs."
-            )
+    # Get appropriate user service
+    user_service = get_user_service(current_user.user_type)
+    
+    # Get remaining URL slots
+    remaining_urls = await user_service.get_remaining_urls(current_user.id)
+    urls_to_create = len(bulk_data.urls)
+    
+    # Check if user would exceed their limit
+    if remaining_urls is not None and urls_to_create > remaining_urls:
+        current_count = await user_service.get_url_count(current_user.id)
+        user_type_label = 'Guest users' if current_user.user_type == 'guest' else 'Registered users'
+        detail_msg = f"{user_type_label} can only create {user_service.max_urls} URLs total. "
+        detail_msg += f"You have {current_count} URLs and are trying to create {urls_to_create} more."
+        if current_user.user_type == 'guest':
+            detail_msg += " Please register for more URLs."
         
-        # Get current URL count for guest
-        existing_count, _ = await url_service.get_user_urls(current_user.id, offset=0, limit=1, with_history=False)        
-        urls_to_create = len(bulk_data.urls)
-        if existing_count + urls_to_create > 5:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Guest users can only create 5 URLs total. You have {existing_count} URLs and are trying to create {urls_to_create} more. Please register for unlimited URLs."
-            )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=detail_msg
+        )
+    
     
     # Prepare data for bulk creation
     urls_data = [(url_item.url, url_item.is_private) for url_item in bulk_data.urls]
@@ -391,4 +411,3 @@ async def create_urls_bulk(
             for url in created_urls
         ]
     }
-

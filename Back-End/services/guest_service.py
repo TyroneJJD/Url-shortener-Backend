@@ -3,6 +3,25 @@ from models import GuestCreate, MigrateGuestUser
 from utils.security import get_password_hash
 from typing import Optional
 from uuid import UUID
+from .base_user_service import BaseUserService
+
+
+class GuestService(BaseUserService):
+    """Service for guest user operations with 5 URL limit"""
+    
+    @property
+    def max_urls(self) -> int:
+        """Guest users can create maximum 5 URLs"""
+        return 5
+    
+    @property
+    def user_type(self) -> str:
+        """User type identifier"""
+        return 'guest'
+
+
+# Create singleton instance
+guest_service = GuestService()
 
 
 async def create_guest_user(guest_data: GuestCreate) -> Optional[dict]:
@@ -68,33 +87,24 @@ async def get_guest_by_uuid(guest_uuid: UUID) -> Optional[dict]:
 async def get_guest_url_count(user_id: int) -> int:
     """
     Get count of active URLs for a guest user
+    DEPRECATED: Use guest_service.get_url_count(user_id) instead
     """
-    
-    async with db.pool.acquire() as conn:
-        result = await conn.fetchval(
-            """
-            SELECT COUNT(*) 
-            FROM urls 
-            WHERE user_id = $1 AND is_active = TRUE
-            """,
-            user_id
-        )
-        
-        return result or 0
+    return await guest_service.get_url_count(user_id)
 
 
 async def can_create_url(user_id: int, user_type: str) -> bool:
     """
     Check if user can create a new URL
     - Guest users: max 5 URLs
-    - Registered users: unlimited
+    - Registered users: max 100 URLs
+    DEPRECATED: Use guest_service.can_create_url() or registered_user_service.can_create_url() instead
     """
-    if user_type == 'registered':
-        return True
+    if user_type == 'guest':
+        return await guest_service.can_create_url(user_id, user_type)
     
-    # Guest user - check limit
-    url_count = await get_guest_url_count(user_id)
-    return url_count < 5
+    # Import here to avoid circular dependency
+    from .auth_service import registered_user_service
+    return await registered_user_service.can_create_url(user_id, user_type)
 
 
 async def migrate_guest_to_registered(user_id: int, migration_data: MigrateGuestUser) -> Optional[dict]:

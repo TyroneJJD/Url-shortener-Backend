@@ -4,6 +4,21 @@ from database import db
 from models import User, UserCreate, UserLogin
 from utils import verify_password, get_password_hash, create_access_token
 from config import settings
+from .base_user_service import BaseUserService
+
+
+class RegisteredUserService(BaseUserService):
+    """Service for registered user operations with 100 URL limit"""
+    
+    @property
+    def max_urls(self) -> int:
+        """Registered users can create maximum 100 URLs"""
+        return 100
+    
+    @property
+    def user_type(self) -> str:
+        """User type identifier"""
+        return 'registered'
 
 
 class AuthService:
@@ -85,4 +100,6 @@ class AuthService:
         return access_token
 
 
+# Create singleton instances
 auth_service = AuthService()
+registered_user_service = RegisteredUserService()
