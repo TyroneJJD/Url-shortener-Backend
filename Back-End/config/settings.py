@@ -1,5 +1,4 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -19,6 +18,9 @@ class Settings(BaseSettings):
     
     # Frontend
     FRONTEND_URL: str = "http://localhost:3002"
+
+    #CORS
+    CORS_ORIGINS: str = "http://localhost:3002"
     
     class Config:
         env_file = ".env"
