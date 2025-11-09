@@ -40,3 +40,16 @@ ON users(guest_uuid) WHERE user_type = 'guest';
 -- Index for cleanup of expired URLs
 CREATE INDEX IF NOT EXISTS idx_urls_expires_at 
 ON urls(expires_at) WHERE expires_at IS NOT NULL AND is_active = TRUE;
+
+-- URL Access History table (for tracking who accessed private URLs)
+CREATE TABLE IF NOT EXISTS url_access_history (
+    id SERIAL PRIMARY KEY,
+    url_id INTEGER REFERENCES urls(id) ON DELETE CASCADE,
+    user_email VARCHAR(100),
+    user_type VARCHAR(10),
+    accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for fast lookups by URL
+CREATE INDEX IF NOT EXISTS idx_url_access_history_url_id 
+ON url_access_history(url_id);

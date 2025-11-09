@@ -1,170 +1,78 @@
-# Arquitectura del Sistema
+# 🏗️ Arquitectura del Sistema
 
-## 📐 Diseño
 
-El backend sigue una arquitectura en capas limpia y separada:
+## 📐 Patrón de Diseño: Arquitectura en Capas
 
-```
-┌─────────────────┐
-│     Routes      │  ← HTTP Endpoints
-├─────────────────┤
-│   Middleware    │  ← Autenticación
-├─────────────────┤
-│    Services     │  ← Lógica de Negocio
-├─────────────────┤
-│     Models      │  ← Validación Pydantic
-├─────────────────┤
-│    Database     │  ← PostgreSQL Pool
-└─────────────────┘
-```
+El backend implementa una **Arquitectura en Capas** con separación clara de responsabilidades:
 
-## 🔄 Flujo de Autenticación
+- **Routes:** Endpoints HTTP (FastAPI)
+- **Middleware:** Autenticación JWT
+- **Services:** Lógica de negocio
+- **Models:** Validación (Pydantic)
+- **Database:** PostgreSQL + asyncpg
 
-```
-Cliente → POST /auth/login
-          ↓
-    [Validar Credenciales]
-          ↓
-    [Generar JWT Token]
-          ↓
-    [Establecer Cookie HTTP-only]
-          ↓
-    Cliente ← Cookie establecida
+## 🔧 Stack
 
-Cliente → GET /urls/me/all (con cookie)
-          ↓
-    [Middleware: Verificar Cookie]
-          ↓
-    [Decodificar JWT]
-          ↓
-    [Obtener Usuario de DB]
-          ↓
-    [Auto-Refresh Token] ← Sliding Session
-          ↓
-    [Actualizar Cookie]
-          ↓
-    [Ejecutar Endpoint]
-          ↓
-    Cliente ← Respuesta (con cookie actualizada)
-```
+| Componente      | Tecnología         |
+|-----------------|-------------------|
+| Framework       | FastAPI           |
+| Base de Datos   | PostgreSQL        |
+| Driver BD       | asyncpg           |
+| Autenticación   | JWT + bcrypt      |
+| Validación      | Pydantic          |
 
-**Sliding Session:** Mientras el usuario esté activo, la sesión se renueva automáticamente en cada request.
-No es necesario llamar manualmente a `/refresh`.
+## 🗄️ Esquema BD
 
-**Endpoint de validación de sesión:**
-- `GET /auth/me` - Devuelve datos del usuario autenticado y renueva la sesión automáticamente
-- Útil para "recuperar" sesiones en el frontend al cargar la aplicación
-- Si la cookie existe y es válida, retorna los datos del usuario
+**users**: id, username, email, hashed_password, user_type, guest_uuid, is_active, created_at
 
-## 🔗 Flujo de Resolución URL
+**urls**: id, short_code, original_url, user_id, clicks, is_active, is_private, created_at, expires_at
+
+**url_access_history**: id, url_id, user_email, user_type, accessed_at
+
+## 🔐 Autenticación
+
+- JWT en cookies HTTP-only (protege contra XSS)
+- Sliding session: token renovado en cada request
+- Guest: 5 URLs, 7 días | Registered: ilimitado
+
+## 🛡️ Seguridad
+
+- Contraseñas: bcrypt
+- SQL Injection: asyncpg (prepared statements)
+- CORS: solo frontend permitido
+
+## 🔄 Features Clave
+
+- Paginación: `GET /urls/me/all?offset=0&limit=20`
+- Historial de accesos: `GET /urls/me/all?with_history=true`
+- Exportar JSON: `GET /urls/me/all?export=true`
+- Carga masiva: `POST /urls/bulk` (máx 100 URLs)
+
+## 📂 Estructura Carpetas
 
 ```
-Cliente → GET /xyz123
-          ↓
-    [Buscar short_code en DB]
-          ↓
-    [¿URL existe?] ─No→ 302 Redirect → Frontend (/xyz123?error=not_found)
-          ↓ Sí
-    [¿is_private?] ─No→ [Incrementar clicks] → 301 Redirect → URL Original
-          ↓ Sí
-    [¿Usuario autenticado?] ─No→ [Set Cookie: redirect_after_login=xyz123]
-          |                        ↓
-          |                   302 Redirect → Frontend (/xyz123?error=unauthorized)
-          ↓ Sí
-    [¿Es usuario guest?] ─Sí→ 302 Redirect → Frontend (/xyz123?error=guest_forbidden)
-          ↓ No (registered)
-    [Incrementar clicks]
-          ↓
-    Cliente ← 301 Redirect → URL Original
+Back-End/
+├── config/         # Settings (Pydantic)
+├── database/       # Pool + schema
+├── models/         # Validación
+├── middleware/     # Auth JWT
+├── services/       # Lógica negocio
+├── routes/         # Endpoints HTTP
+├── utils/          # Seguridad, generador
+├── documentacion/  # Docs
+└── main.py         # Entry point
 ```
 
-**Nota:** En caso de error, el backend redirige al frontend para que maneje la UI de error.
+## 📈 Performance
 
-**Flujo de redirección post-login:**
-1. Usuario intenta acceder URL privada sin login → Cookie `redirect_after_login=xyz123` (5 min)
-2. Frontend muestra formulario de login
-3. Después de login exitoso, frontend lee la cookie y redirige a `/{short_code}`
-4. Backend valida sesión y tipo de usuario (solo registered puede acceder URLs privadas)
-5. Backend valida sesión y redirige a URL original
+- Pool de conexiones asyncpg
+- Stack 100% async/await
+- Índices clave: short_code, user_id, url_id
 
-**Restricción de usuarios invitados:**
-- Guests NO pueden acceder a URLs privadas, incluso si están autenticados
-- Solo usuarios registered tienen acceso a URLs privadas
-- Frontend debe mostrar mensaje: "Regístrate para acceder a URLs privadas"
+## 📚 Documentación
 
-El frontend puede mostrar:
-- Página personalizada de "URL no encontrada"
-- Formulario de login para URLs privadas con mensaje "Inicia sesión para ver este enlace"
-- Mensaje especial para guests: "Esta URL es privada. Regístrate para acceder"
+- [`USUARIOS.md`](USUARIOS.md) - Usuarios y endpoints
+- [`README.md`](../README.md) - Inicio rápido
 
-## 🗂️ Estructura de Módulos
 
-### `/config`
-- **Propósito:** Configuración centralizada
-- **Contenido:** Settings de Pydantic con variables de entorno
 
-### `/database`
-- **Propósito:** Gestión de base de datos
-- **Contenido:** Pool de conexiones asyncpg, schema SQL
-
-### `/models`
-- **Propósito:** Modelos de datos
-- **Contenido:** Schemas Pydantic para validación y serialización
-
-### `/services`
-- **Propósito:** Lógica de negocio
-- **Contenido:** Operaciones CRUD, reglas de negocio
-
-### `/routes`
-- **Propósito:** Endpoints HTTP
-- **Contenido:** Definición de rutas FastAPI
-
-### `/middleware`
-- **Propósito:** Interceptores de peticiones
-- **Contenido:** Autenticación, validación de cookies
-
-### `/utils`
-- **Propósito:** Funciones auxiliares
-- **Contenido:** Seguridad (JWT, bcrypt), generador de códigos
-
-## 🔐 Seguridad
-
-### Autenticación
-1. Usuario envía credenciales
-2. Backend verifica con bcrypt
-3. Genera JWT firmado con SECRET_KEY (30 min)
-4. Establece cookie HTTP-only, secure, SameSite=lax
-
-### Sliding Session (Auto-Refresh)
-1. En cada request autenticado, el middleware genera un nuevo token
-2. Actualiza la cookie automáticamente
-3. **Resultado:** Mientras el usuario esté activo, la sesión nunca expira
-4. Si está inactivo por 30+ minutos → 401, debe hacer login
-
-### Autorización
-1. Middleware extrae cookie de request
-2. Decodifica y valida JWT
-3. Obtiene usuario de DB
-4. Inyecta usuario en endpoint via Depends()
-
-### Protección
-- **Cookies HTTP-only:** No accesibles desde JavaScript
-- **Secure flag:** Solo HTTPS en producción
-- **SameSite:** Protección CSRF
-- **JWT firmado:** Integridad del token
-- **bcrypt:** Hash de contraseñas con salt
-
-## 📊 Base de Datos
-
-### Relaciones
-```
-users (1) ──→ (N) urls
-```
-
-### Índices
-- `urls.short_code` (UNIQUE, WHERE is_active = TRUE)
-
-### Estrategia
-- **Soft Delete:** `is_active = FALSE` en lugar de DELETE
-- **Timestamps:** Automáticos con triggers
-- **Pool de Conexiones:** asyncpg para alto rendimiento

@@ -1,5 +1,5 @@
 from .user import User, UserCreate, UserLogin, UserResponse, GuestCreate, MigrateGuestUser
-from .url import URL, URLCreate, URLUpdate, URLResponse
+from .url import URL, URLCreate, URLUpdate, URLResponse, URLBulkCreate, URLBulkItem, URLAccessHistory
 from .token import Token, TokenData
 
 __all__ = [
@@ -13,6 +13,9 @@ __all__ = [
     "URLCreate",
     "URLUpdate",
     "URLResponse",
+    "URLBulkCreate",
+    "URLBulkItem",
+    "URLAccessHistory",
     "Token",
     "TokenData",
 ]

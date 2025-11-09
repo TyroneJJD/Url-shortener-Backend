@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     # Frontend
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:3002"
     
     class Config:
         env_file = ".env"

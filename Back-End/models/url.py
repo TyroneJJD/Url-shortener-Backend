@@ -1,5 +1,5 @@
 from pydantic import BaseModel, HttpUrl, field_validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -18,6 +18,43 @@ class URLBase(BaseModel):
 class URLCreate(URLBase):
     """URL creation model"""
     is_private: bool = False
+
+
+class URLBulkItem(BaseModel):
+    """Single URL item for bulk creation"""
+    url: str
+    is_private: bool = False
+    
+    @field_validator('url')
+    @classmethod
+    def validate_url(cls, v):
+        if not v.startswith(('http://', 'https://')):
+            raise ValueError('URL must start with http:// or https://')
+        return v
+
+
+class URLBulkCreate(BaseModel):
+    """Bulk URL creation model"""
+    urls: List[URLBulkItem]
+    
+    @field_validator('urls')
+    @classmethod
+    def validate_urls_list(cls, v):
+        if not v:
+            raise ValueError('URLs list cannot be empty')
+        if len(v) > 100:
+            raise ValueError('Cannot create more than 100 URLs at once')
+        return v
+
+
+class URLAccessHistory(BaseModel):
+    """URL access history model"""
+    user_email: str
+    user_type: str
+    accessed_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 
 class URLUpdate(BaseModel):
@@ -43,6 +80,7 @@ class URLResponse(URLBase):
     is_private: bool
     created_at: datetime
     expires_at: Optional[datetime] = None
+    access_history: Optional[List[URLAccessHistory]] = None
     
     class Config:
         from_attributes = True
@@ -59,3 +97,9 @@ class URL(URLBase):
     created_at: datetime
     updated_at: datetime
     expires_at: Optional[datetime] = None
+    access_history: Optional[List[dict]] = None
+    
+    class Config:
+        from_attributes = True
+        extra = 'allow'  # Permite atributos adicionales dinámicos
+

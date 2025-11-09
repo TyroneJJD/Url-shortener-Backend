@@ -55,15 +55,43 @@ class URLService:
             )
     
     @staticmethod
-    async def get_user_urls(user_id: int) -> List[URL]:
-        """Get all URLs created by a user"""
+    async def get_user_urls(user_id: int, offset: int = 0, with_history: bool = False):
+        """Get URLs created by a user with pagination and optional access history
+        Returns tuple: (total_count, urls_list)
+        """
+        LIMIT = 20 # Default pagination limit
         async with db.pool.acquire() as conn:
-            rows = await conn.fetch(
-                'SELECT * FROM urls WHERE user_id = $1 ORDER BY created_at DESC',
+            # Get total count
+            total = await conn.fetchval(
+                'SELECT COUNT(*) FROM urls WHERE user_id = $1',
                 user_id
             )
             
-            return [URL(**dict(row)) for row in rows]
+            # Get paginated URLs
+            rows = await conn.fetch(
+                '''SELECT * FROM urls 
+                WHERE user_id = $1 
+                ORDER BY created_at DESC 
+                LIMIT $2 OFFSET $3''',
+                user_id, LIMIT, offset
+            )
+            
+            urls = [URL(**dict(row)) for row in rows]
+            
+            # If with_history is True, fetch access history for each URL
+            if with_history:
+                for url in urls:
+                    history_rows = await conn.fetch(
+                        '''SELECT user_email, user_type, accessed_at 
+                        FROM url_access_history 
+                        WHERE url_id = $1 
+                        ORDER BY accessed_at DESC''',
+                        url.id
+                    )
+                    # Add access_history as attribute
+                    url.access_history = [dict(row) for row in history_rows]
+            
+            return total, urls
     
     @staticmethod
     async def get_url_by_id(url_id: int, user_id: int) -> Optional[URL]:
@@ -135,6 +163,43 @@ class URLService:
             )
             
             return result == 'DELETE 1'
+    
+    @staticmethod
+    async def record_url_access(url_id: int, user_email: str, user_type: str) -> None:
+        """Record URL access in history"""
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                '''INSERT INTO url_access_history (url_id, user_email, user_type)
+                VALUES ($1, $2, $3)''',
+                url_id, user_email, user_type
+            )
+    
+    @staticmethod
+    async def create_urls_bulk(urls_data: List[tuple], user_id: int, user_type: str = 'registered') -> List[URL]:
+        """Create multiple URLs at once"""
+        from datetime import datetime, timedelta
+        
+        # Calculate expiration for guest users (7 days)
+        expires_at = None
+        if user_type == 'guest':
+            expires_at = datetime.utcnow() + timedelta(days=7)
+        
+        created_urls = []
+        async with db.pool.acquire() as conn:
+            for original_url, is_private in urls_data:
+                # Generate unique short code
+                short_code = await generate_short_code()
+                
+                row = await conn.fetchrow('''
+                    INSERT INTO urls (short_code, original_url, user_id, is_private, expires_at)
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING id, short_code, original_url, user_id, clicks, is_active, 
+                              is_private, created_at, updated_at, expires_at
+                ''', short_code, original_url, user_id, is_private, expires_at)
+                
+                created_urls.append(URL(**dict(row)))
+        
+        return created_urls
 
 
 url_service = URLService()
