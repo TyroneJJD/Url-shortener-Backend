@@ -46,13 +46,7 @@ async def resolve_url(short_code: str, current_user: User = Depends(get_optional
                 status_code=status.HTTP_302_FOUND,
                 headers={"Location": f"{settings.FRONTEND_URL}/{short_code}?error=unauthorized"}
             )
-            response.set_cookie(
-                key="redirect_after_login",
-                value=short_code,
-                httponly=True,
-                max_age=300,  # 5 minutes
-                samesite="lax"
-            )
+            
             return response
         
         # Guest users cannot access private URLs (only registered users)
