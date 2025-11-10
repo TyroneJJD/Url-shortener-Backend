@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta , timezone
 from database import db
 from models import URL, URLCreate, URLUpdate
 from utils import generate_short_code
@@ -17,7 +17,7 @@ class URLService:
         # Calculate expiration for guest users (7 days)
         expires_at = None
         if user_type == 'guest':
-            expires_at = datetime.utcnow() + timedelta(days=7)
+            expires_at = datetime.now(timezone.utc) + timedelta(days=7)
         
         # Create URL
         async with db.pool.acquire() as conn:
@@ -182,7 +182,7 @@ class URLService:
         # Calculate expiration for guest users (7 days)
         expires_at = None
         if user_type == 'guest':
-            expires_at = datetime.utcnow() + timedelta(days=7)
+            expires_at = datetime.now(datetime.timezone.utc) + timedelta(days=7)
         
         created_urls = []
         async with db.pool.acquire() as conn:

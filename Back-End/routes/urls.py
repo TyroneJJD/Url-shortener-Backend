@@ -8,7 +8,7 @@ from middleware import get_current_user_from_cookie, get_optional_user_from_cook
 from config import settings
 import json
 from io import BytesIO
-import datetime
+from datetime import datetime, timezone
 
 router = APIRouter(tags=["URLs"])
 
@@ -95,7 +95,7 @@ async def create_url(
     
     # Get appropriate user service and check if user can create URL
     user_service = get_user_service(current_user.user_type)
-    can_create = await user_service.can_create_url(current_user.id, current_user.user_type)
+    can_create = await user_service.can_create_url(current_user.id)
     
     if not can_create:
         detail_msg = f"{'Guest users' if current_user.user_type == 'guest' else 'Registered users'} can only create {user_service.max_urls} URLs."
@@ -161,7 +161,7 @@ async def get_as_file(current_user: User, with_history: bool, offset: int = 0):
 
     # Build export data
     export_data = {
-        "exported_at": datetime.now(datetime.timezone.utc).isoformat(),
+        "exported_at": datetime.now(timezone.utc).isoformat(),
         "user_id": current_user.id,
         "username": current_user.username,
         "total_urls": total,
@@ -200,7 +200,7 @@ async def get_as_file(current_user: User, with_history: bool, offset: int = 0):
     json_bytes = BytesIO(json_str.encode('utf-8'))
     
     # Generate filename with timestamp
-    filename = f"urls_export_{current_user.username}_{datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"urls_export_{current_user.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     
     # Return as downloadable file
     return StreamingResponse(
