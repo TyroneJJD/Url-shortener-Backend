@@ -41,22 +41,15 @@ class BaseUserService(ABC):
             
             return result or 0
     
-    async def can_create_url(self, user_id: int, user_type: str = None) -> bool:
+    async def can_create_url(self, user_id: int) -> bool:
         """
         Check if user can create a new URL based on their limits
         Args:
             user_id: User ID
-            user_type: User type (optional, will use self.user_type if not provided)
         Returns:
             True if user can create more URLs, False otherwise
         """
-        # Use provided user_type or fall back to instance user_type
-        check_type = user_type or self.user_type
-        
-        # If user type doesn't match this service, delegate appropriately
-        if check_type != self.user_type:
-            return True  # Let the correct service handle it
-        
+
         # If unlimited URLs (max_urls is None)
         if self.max_urls is None:
             return True

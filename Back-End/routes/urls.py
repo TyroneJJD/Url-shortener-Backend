@@ -8,7 +8,7 @@ from middleware import get_current_user_from_cookie, get_optional_user_from_cook
 from config import settings
 import json
 from io import BytesIO
-from datetime import datetime
+import datetime
 
 router = APIRouter(tags=["URLs"])
 
@@ -98,8 +98,7 @@ async def create_url(
     can_create = await user_service.can_create_url(current_user.id, current_user.user_type)
     
     if not can_create:
-        limit = user_service.max_urls
-        detail_msg = f"{'Guest users' if current_user.user_type == 'guest' else 'Registered users'} can only create {limit} URLs."
+        detail_msg = f"{'Guest users' if current_user.user_type == 'guest' else 'Registered users'} can only create {user_service.max_urls} URLs."
         if current_user.user_type == 'guest':
             detail_msg += " Please register for more URLs."
         
@@ -144,8 +143,6 @@ async def get_my_urls(
     If export=true, ignores pagination and returns all URLs as downloadable JSON file
     
     """
-
-    print(f"get_my_urls called with offset={offset}, with_history={with_history}, export={export}")
     
     # If export mode, get all URLs without pagination
     if export:
@@ -159,12 +156,12 @@ async def get_as_file(current_user: User, with_history: bool, offset: int = 0):
     """
     Helper function to export URLs as file
     """
-    # Get ALL URLs (no pagination, fixed large limit)
-    total, urls = await url_service.get_user_urls(current_user.id,offset,with_history)
-    
+    # Get ALL URLs (pagination, fixed large limit)
+    total, urls = await url_service.get_user_urls(current_user.id, offset, with_history)
+
     # Build export data
     export_data = {
-        "exported_at": datetime.utcnow().isoformat(),
+        "exported_at": datetime.now(datetime.timezone.utc).isoformat(),
         "user_id": current_user.id,
         "username": current_user.username,
         "total_urls": total,
@@ -203,7 +200,7 @@ async def get_as_file(current_user: User, with_history: bool, offset: int = 0):
     json_bytes = BytesIO(json_str.encode('utf-8'))
     
     # Generate filename with timestamp
-    filename = f"urls_export_{current_user.username}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+    filename = f"urls_export_{current_user.username}_{datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
     
     # Return as downloadable file
     return StreamingResponse(
@@ -325,10 +322,10 @@ async def create_urls_bulk(
     - URLs expire in 7 days
     
     Registered users: 
-    - Unlimited URLs
+    - Max 100 URLs (total)
     - Can create private URLs
     - No expiration
-    
+
     Max 100 URLs per request
     """
     # Validate file type
@@ -359,13 +356,12 @@ async def create_urls_bulk(
     
     # Check if any URL is private and user is guest
     if current_user.user_type == 'guest':
-        for url_item in bulk_data.urls:
-            if url_item.is_private:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Guest users cannot create private URLs. Please register to use this feature."
-                )
-    
+        if any(url_item.is_private for url_item in bulk_data.urls):
+            raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Guest users cannot create private URLs. Please register to use this feature."
+            )
+        
     # Get appropriate user service
     user_service = get_user_service(current_user.user_type)
     
